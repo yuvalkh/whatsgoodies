@@ -190,6 +190,24 @@ export async function releaseCard(requestId: string) {
   ])
 }
 
+export async function cancelRequest(requestId: string) {
+  const user = await getCurrentUser()
+  if (!user) throw new Error('Not authenticated')
+
+  const request = await prisma.dayRequest.findUnique({
+    where: { id: requestId }
+  })
+
+  if (!request || request.requesterId !== user.id || request.status !== 'PENDING') {
+    throw new Error('Unauthorized or request is not pending')
+  }
+
+  // Delete pending request
+  await prisma.dayRequest.delete({
+    where: { id: requestId }
+  })
+}
+
 export async function updateProfile(name: string) {
   const user = await getCurrentUser()
   if (!user) throw new Error('Not authenticated')
