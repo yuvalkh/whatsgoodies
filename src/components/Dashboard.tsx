@@ -2,21 +2,27 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { format, isToday, addDays } from 'date-fns'
+import { format, isToday } from 'date-fns'
 import { 
   LogOut, Calendar, Check, X, 
-  CreditCard, User, Clock, Bell, Edit3, ArrowRight, XCircle
+  CreditCard, User, Clock, Bell, Edit3, ArrowRight, XCircle, Info
 } from 'lucide-react'
-import { logout, toggleDayStatus, requestDay, approveRequest, cancelAssignment, updateProfile } from '@/actions/goodies'
+import { 
+  logout, toggleDayStatus, requestDay, approveRequest, 
+  cancelAssignment, updateProfile, declineRequest, releaseCard 
+} from '@/actions/goodies'
 
 export default function Dashboard({ data }: { data: any }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   
-  // Profile Modal State
+  // Profile Modal
   const [showProfileModal, setShowProfileModal] = useState(data.user.name === 'Goodies User')
   const [newName, setNewName] = useState(data.user.name === 'Goodies User' ? '' : data.user.name)
   const [profileError, setProfileError] = useState('')
+
+  // Day Details Modal
+  const [selectedDay, setSelectedDay] = useState<any>(null)
 
   const handleLogout = async () => {
     await logout()
@@ -28,6 +34,7 @@ export default function Dashboard({ data }: { data: any }) {
       const isUsing = currentState !== 'USING'
       await toggleDayStatus(date.toISOString(), isUsing)
       router.refresh()
+      setSelectedDay(null)
     })
   }
 
@@ -42,6 +49,15 @@ export default function Dashboard({ data }: { data: any }) {
     startTransition(async () => {
       await approveRequest(requestId, dayStatusId)
       router.refresh()
+      setSelectedDay(null)
+    })
+  }
+
+  const handleDecline = (requestId: string, dayStatusId: string) => {
+    startTransition(async () => {
+      await declineRequest(requestId, dayStatusId)
+      router.refresh()
+      setSelectedDay(null)
     })
   }
 
@@ -49,6 +65,15 @@ export default function Dashboard({ data }: { data: any }) {
     startTransition(async () => {
       await cancelAssignment(dayStatusId)
       router.refresh()
+      setSelectedDay(null)
+    })
+  }
+
+  const handleRelease = (requestId: string) => {
+    startTransition(async () => {
+      await releaseCard(requestId)
+      router.refresh()
+      setSelectedDay(null)
     })
   }
 
@@ -74,9 +99,9 @@ export default function Dashboard({ data }: { data: any }) {
       {/* Profile Modal */}
       {showProfileModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="glass-card p-6 w-full max-w-md animate-in zoom-in-95 duration-200 bg-white dark:bg-slate-900 border-indigo-500/30">
+          <div className="glass-card p-6 w-full max-w-md animate-in zoom-in-95 duration-200 bg-white dark:bg-slate-900">
             <h2 className="text-2xl font-bold mb-2 text-indigo-600 dark:text-indigo-400">Welcome! What should we call you?</h2>
-            <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">Using real names makes our community much friendlier.</p>
+            <p className="text-gray-500 text-sm mb-6">Using real names makes our community much friendlier.</p>
             <input 
               type="text"
               value={newName}
@@ -86,18 +111,99 @@ export default function Dashboard({ data }: { data: any }) {
               autoFocus
             />
             {profileError && <p className="text-red-500 text-sm mb-4">{profileError}</p>}
-            <button 
-              onClick={handleSaveProfile}
-              disabled={isPending || !newName.trim()}
-              className="primary-btn w-full disabled:opacity-50"
-            >
+            <button onClick={handleSaveProfile} disabled={isPending || !newName.trim()} className="primary-btn w-full disabled:opacity-50">
               Save Profile
             </button>
             {data.user.name !== 'Goodies User' && (
-              <button onClick={() => setShowProfileModal(false)} className="w-full text-gray-500 mt-4 hover:text-gray-800 dark:hover:text-gray-200 transition-colors">
+              <button onClick={() => setShowProfileModal(false)} className="w-full text-gray-500 mt-4 hover:text-gray-800 transition-colors">
                 Cancel
               </button>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Day Details Modal */}
+      {selectedDay && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="glass-card p-6 w-full max-w-md animate-in zoom-in-95 duration-200 bg-white dark:bg-slate-900 border border-gray-200 dark:border-gray-800 shadow-2xl relative">
+            <button onClick={() => setSelectedDay(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-800 dark:hover:text-white">
+              <X className="w-5 h-5" />
+            </button>
+            <h2 className="text-2xl font-bold mb-1">{format(selectedDay.date, 'EEEE, MMMM do')}</h2>
+            <div className="h-px w-full bg-gray-200 dark:bg-gray-800 my-4" />
+
+            <div className="space-y-6">
+              {/* My Card Status */}
+              <div>
+                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">My Card</h3>
+                {selectedDay.status === 'USING' && (
+                  <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-lg border border-emerald-100 dark:border-emerald-800/30">
+                    <p className="text-emerald-800 dark:text-emerald-400 font-bold mb-3 flex items-center gap-2"><Check className="w-4 h-4" /> You are using it</p>
+                    <button onClick={() => handleToggle(selectedDay.date, selectedDay.status)} disabled={isPending} className="w-full bg-white text-emerald-600 border border-emerald-200 hover:bg-emerald-50 font-bold py-2 px-4 rounded-lg transition-colors text-sm">
+                      Mark as Available to Share
+                    </button>
+                  </div>
+                )}
+
+                {selectedDay.status === 'NOT_USING' && (
+                  <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg border border-red-100 dark:border-red-800/30">
+                    <p className="text-red-800 dark:text-red-400 font-bold mb-2">Available for others</p>
+                    
+                    {/* Pending Requests */}
+                    {selectedDay.requests.filter((r: any) => r.status === 'PENDING').length > 0 ? (
+                      <div className="mt-4 space-y-2">
+                        <p className="text-xs font-semibold text-red-700 dark:text-red-300">Pending Requests:</p>
+                        {selectedDay.requests.filter((r: any) => r.status === 'PENDING').map((req: any) => (
+                          <div key={req.id} className="flex items-center justify-between bg-white dark:bg-slate-800 p-2 rounded shadow-sm text-sm">
+                            <span className="font-medium text-gray-800 dark:text-gray-200">{req.requester.name}</span>
+                            <div className="flex items-center gap-1">
+                              <button onClick={() => handleApprove(req.id, selectedDay.id)} disabled={isPending} className="bg-emerald-500 hover:bg-emerald-600 text-white px-2 py-1 rounded transition-colors text-xs font-bold">Approve</button>
+                              <button onClick={() => handleDecline(req.id, selectedDay.id)} disabled={isPending} className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-2 py-1 rounded transition-colors text-xs font-bold">Decline</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-red-600/80 dark:text-red-400/80 mb-3 italic">No Takers Yet.</p>
+                    )}
+
+                    <button onClick={() => handleToggle(selectedDay.date, selectedDay.status)} disabled={isPending} className="w-full mt-3 bg-white text-red-600 border border-red-200 hover:bg-red-50 font-bold py-2 px-4 rounded-lg transition-colors text-sm">
+                      Cancel Sharing (Mark Using)
+                    </button>
+                  </div>
+                )}
+
+                {selectedDay.status === 'ASSIGNED' && (
+                  <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg border border-red-100 dark:border-red-800/30">
+                    <p className="text-red-800 dark:text-red-400 font-bold mb-1">Shared & Assigned</p>
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Taken by: {selectedDay.requests.find((r: any) => r.status === 'APPROVED')?.requester?.name}</p>
+                    <button onClick={() => handleCancelAssignment(selectedDay.id)} disabled={isPending} className="w-full bg-red-100 hover:bg-red-200 text-red-700 font-bold py-2 px-4 rounded-lg transition-colors text-sm flex items-center justify-center gap-2">
+                      <XCircle className="w-4 h-4" /> Revoke Assignment
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* My Borrowed Cards */}
+              {selectedDay.borrowings.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Borrowed Cards</h3>
+                  <div className="space-y-2">
+                    {selectedDay.borrowings.map((borrowing: any) => (
+                      <div key={borrowing.id} className="bg-orange-50 dark:bg-orange-900/20 p-3 rounded-lg border border-orange-200 dark:border-orange-800/30 flex items-center justify-between">
+                        <div>
+                          <p className="text-orange-800 dark:text-orange-400 font-bold text-sm">From {borrowing.dayStatus.owner.name}</p>
+                        </div>
+                        <button onClick={() => handleRelease(borrowing.id)} disabled={isPending} className="bg-white hover:bg-orange-100 text-orange-600 border border-orange-200 px-3 py-1.5 rounded-md transition-colors text-xs font-bold">
+                          Release
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -110,14 +216,13 @@ export default function Dashboard({ data }: { data: any }) {
           </div>
           <div>
             <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-500 to-purple-500">
-              Goodies Platform V2
+              Goodies Platform V3
             </h1>
             <div className="flex items-center gap-2 mt-1">
               <span className="font-semibold text-lg">{data.user.name}</span>
               <button onClick={() => setShowProfileModal(true)} className="text-gray-400 hover:text-indigo-500 transition-colors">
                 <Edit3 className="w-4 h-4" />
               </button>
-              <span className="text-sm text-gray-500 dark:text-gray-400 ml-2">({data.user.goodiesNumber})</span>
             </div>
           </div>
         </div>
@@ -128,7 +233,7 @@ export default function Dashboard({ data }: { data: any }) {
 
       {/* Suggested Matches Widget */}
       {data.suggestions?.length > 0 && (
-        <section className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl p-6 text-white shadow-lg animate-in slide-in-from-top-4">
+        <section className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl p-6 text-white shadow-lg">
           <div className="flex items-center gap-2 mb-4">
             <Bell className="w-5 h-5 text-indigo-200 animate-pulse" />
             <h2 className="text-lg font-bold">Open Opportunities</h2>
@@ -153,146 +258,103 @@ export default function Dashboard({ data }: { data: any }) {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Main Column: 30-Day Calendar */}
+        {/* Main Column: Calendar */}
         <div className="lg:col-span-2 space-y-6">
           <section className="glass-card p-6">
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
               <div className="flex items-center gap-2">
                 <Calendar className="w-6 h-6 text-indigo-500" />
-                <h2 className="text-xl font-bold">My 30-Day Calendar</h2>
+                <h2 className="text-xl font-bold">Workweek Calendar</h2>
               </div>
               
               {/* Legend */}
-              <div className="flex items-center gap-4 text-xs font-medium">
-                <div className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-orange-400"></span> Using</div>
-                <div className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-red-500"></span> Available</div>
-                <div className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-emerald-500"></span> Assigned</div>
+              <div className="flex flex-wrap items-center gap-4 text-xs font-medium bg-gray-50 dark:bg-slate-800 p-2 rounded-lg border border-gray-100 dark:border-gray-700">
+                <div className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-emerald-500"></span> Using</div>
+                <div className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-500"></span> Shared</div>
+                <div className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-400"></span> Borrowing</div>
               </div>
             </div>
             
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+            <div className="grid grid-cols-5 gap-2 sm:gap-3">
+              {/* Day Headers */}
+              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu'].map(d => (
+                <div key={d} className="text-center text-xs font-bold uppercase tracking-wider text-gray-500 pb-2">{d}</div>
+              ))}
+
               {data.schedule.map((day: any) => {
+                const isBorrowing = day.borrowings.length > 0
                 const pendingRequests = day.requests?.filter((r: any) => r.status === 'PENDING') || []
                 const approvedRequest = day.requests?.find((r: any) => r.status === 'APPROVED')
                 
-                // Colors based on state
-                let bgColor = 'bg-orange-50 hover:bg-orange-100 dark:bg-orange-950/30 dark:hover:bg-orange-900/40 border-orange-200 dark:border-orange-800'
-                let textColor = 'text-orange-700 dark:text-orange-400'
+                // Color Logic
+                let bgColor = 'bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/30 dark:hover:bg-emerald-900/50 border-emerald-200 dark:border-emerald-800'
+                let textColor = 'text-emerald-700 dark:text-emerald-400'
                 
-                if (day.status === 'NOT_USING') {
-                  bgColor = 'bg-red-50 hover:bg-red-100 dark:bg-red-950/30 dark:hover:bg-red-900/40 border-red-200 dark:border-red-800 shadow-sm'
+                if (isBorrowing) {
+                  bgColor = 'bg-orange-50 hover:bg-orange-100 dark:bg-orange-950/30 dark:hover:bg-orange-900/50 border-orange-300 dark:border-orange-700 shadow-md ring-1 ring-orange-400/50'
+                  textColor = 'text-orange-800 dark:text-orange-400'
+                } else if (day.status === 'NOT_USING') {
+                  bgColor = 'bg-red-50 hover:bg-red-100 dark:bg-red-950/30 dark:hover:bg-red-900/50 border-red-200 dark:border-red-800'
                   textColor = 'text-red-700 dark:text-red-400'
                 } else if (day.status === 'ASSIGNED') {
-                  bgColor = 'bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/30 dark:hover:bg-emerald-900/40 border-emerald-200 dark:border-emerald-800 shadow-md'
-                  textColor = 'text-emerald-700 dark:text-emerald-400'
+                  bgColor = 'bg-red-100 hover:bg-red-200 dark:bg-red-900/40 dark:hover:bg-red-900/60 border-red-300 dark:border-red-700 shadow-inner'
+                  textColor = 'text-red-800 dark:text-red-300'
                 }
 
                 return (
-                  <div key={day.date.toISOString()} className={`relative p-3 rounded-xl border-2 transition-all cursor-pointer flex flex-col items-center justify-center text-center h-28 group ${bgColor}`}
-                       onClick={() => day.status !== 'ASSIGNED' && handleToggle(day.date, day.status)}
+                  <div key={day.date.toISOString()} className={`relative p-2 rounded-xl border-2 transition-all cursor-pointer flex flex-col items-center justify-center text-center h-28 group ${bgColor}`}
+                       onClick={() => setSelectedDay(day)}
                   >
-                    <span className={`text-xs font-bold uppercase tracking-wider mb-1 opacity-70 ${textColor}`}>{format(day.date, 'EEE')}</span>
                     <span className={`text-2xl font-black ${textColor}`}>{format(day.date, 'd')}</span>
                     
-                    {isToday(day.date) && <span className="absolute -top-2 -right-2 bg-indigo-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold shadow">TODAY</span>}
+                    {isToday(day.date) && <span className="absolute -top-2 -right-2 bg-indigo-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold shadow z-10">TODAY</span>}
 
-                    {day.status === 'NOT_USING' && pendingRequests.length > 0 && (
-                      <span className="absolute -bottom-2 bg-amber-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold shadow flex items-center gap-1">
-                        <Bell className="w-3 h-3" /> {pendingRequests.length}
-                      </span>
-                    )}
-
-                    {day.status === 'ASSIGNED' && (
-                      <div className="absolute -bottom-2 w-[90%] text-[10px] font-bold bg-emerald-600 text-white px-1 py-0.5 rounded shadow truncate">
-                        {approvedRequest?.requester?.name.split(' ')[0]}
+                    {/* Borrowing State UI */}
+                    {isBorrowing && (
+                      <div className="absolute inset-x-1 bottom-1 text-[9px] sm:text-[10px] font-bold bg-orange-200 dark:bg-orange-900/80 text-orange-800 dark:text-orange-200 px-1 py-0.5 rounded truncate">
+                        Borrowing: {day.borrowings.map((b:any) => b.dayStatus.owner.name.split(' ')[0]).join(', ')}
                       </div>
                     )}
 
-                    {/* Hover text for default state toggle */}
-                    {day.status !== 'ASSIGNED' && (
-                      <div className="absolute inset-0 bg-black/60 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                        <span className="text-white text-xs font-bold">
-                          {day.status === 'USING' ? 'Mark Available' : 'Mark Using'}
-                        </span>
+                    {/* Shared State UI */}
+                    {!isBorrowing && day.status === 'NOT_USING' && (
+                      <div className="absolute inset-x-1 bottom-1 flex flex-col gap-1 items-center">
+                        <span className="text-[9px] font-bold text-red-600/70 dark:text-red-400/70 uppercase">No Takers</span>
+                        {pendingRequests.length > 0 && (
+                          <span className="bg-red-500 text-white text-[10px] px-1.5 rounded-full font-bold shadow animate-pulse">
+                            {pendingRequests.length} Req
+                          </span>
+                        )}
                       </div>
                     )}
+
+                    {!isBorrowing && day.status === 'ASSIGNED' && (
+                      <div className="absolute inset-x-1 bottom-1 text-[9px] sm:text-[10px] font-bold bg-red-200 dark:bg-red-900/80 text-red-800 dark:text-red-200 px-1 py-0.5 rounded truncate">
+                        Taken: {approvedRequest?.requester?.name.split(' ')[0]}
+                      </div>
+                    )}
+
+                    <div className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Info className={`w-3.5 h-3.5 ${textColor} opacity-50`} />
+                    </div>
                   </div>
                 )
               })}
             </div>
-
-            {/* Approvals section below the grid for any days that have requests */}
-            {data.schedule.some((d: any) => d.status === 'NOT_USING' && d.requests.some((r: any) => r.status === 'PENDING')) && (
-              <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-800">
-                <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><Bell className="w-5 h-5 text-amber-500" /> Pending Requests for Your Days</h3>
-                <div className="space-y-4">
-                  {data.schedule.filter((d: any) => d.status === 'NOT_USING' && d.requests.some((r: any) => r.status === 'PENDING')).map((day: any) => (
-                    <div key={day.id} className="bg-amber-50/50 dark:bg-amber-900/10 p-4 rounded-xl border border-amber-100 dark:border-amber-900/30">
-                      <p className="font-bold text-amber-800 dark:text-amber-500 mb-2">{format(day.date, 'EEEE, MMMM do')}</p>
-                      <div className="space-y-2">
-                        {day.requests.filter((r: any) => r.status === 'PENDING').map((req: any) => (
-                          <div key={req.id} className="flex items-center justify-between bg-white dark:bg-slate-800 p-2 rounded-lg shadow-sm">
-                            <span className="font-medium text-sm flex items-center gap-2">
-                              <User className="w-4 h-4 text-indigo-500" /> {req.requester.name}
-                            </span>
-                            <button
-                              onClick={() => handleApprove(req.id, day.id)}
-                              disabled={isPending}
-                              className="bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-md transition-colors flex items-center gap-1 font-medium text-sm"
-                            >
-                              <Check className="w-4 h-4" /> Approve
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Cancel Assignments Section */}
-            {data.schedule.some((d: any) => d.status === 'ASSIGNED') && (
-              <div className="mt-6 pt-6 border-t border-gray-100 dark:border-gray-800">
-                <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><Check className="w-5 h-5 text-emerald-500" /> Confirmed Assignments</h3>
-                <div className="space-y-3">
-                  {data.schedule.filter((d: any) => d.status === 'ASSIGNED').map((day: any) => {
-                    const approvedRequest = day.requests?.find((r: any) => r.status === 'APPROVED')
-                    return (
-                      <div key={day.id} className="flex items-center justify-between bg-emerald-50/50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/30 p-3 rounded-lg">
-                        <div>
-                          <p className="font-bold text-sm text-emerald-800 dark:text-emerald-400">{format(day.date, 'MMM do')}</p>
-                          <p className="text-xs font-medium mt-0.5">Assigned to {approvedRequest?.requester?.name}</p>
-                        </div>
-                        <button
-                          onClick={() => handleCancelAssignment(day.id)}
-                          disabled={isPending}
-                          className="text-xs bg-red-100 hover:bg-red-200 text-red-700 dark:bg-red-900/40 dark:hover:bg-red-900/60 dark:text-red-400 px-3 py-1.5 rounded-md transition-colors flex items-center gap-1 font-semibold"
-                        >
-                          <XCircle className="w-3.5 h-3.5" /> Revoke
-                        </button>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
           </section>
         </div>
 
         {/* Sidebar: Marketplace & My Requests */}
         <div className="space-y-6">
           <section className="glass-card p-6 border-t-4 border-t-indigo-500">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-2">
-                <User className="w-6 h-6 text-indigo-500" />
-                <h2 className="text-xl font-bold">Marketplace</h2>
-              </div>
+            <div className="flex items-center gap-2 mb-6">
+              <User className="w-6 h-6 text-indigo-500" />
+              <h2 className="text-xl font-bold">Marketplace</h2>
             </div>
             
             {data.marketplace.length === 0 ? (
-              <p className="text-gray-500 dark:text-gray-400 text-sm italic text-center py-8">
-                No cards available in the next 30 days.
+              <p className="text-gray-500 text-sm italic text-center py-8">
+                No cards available.
               </p>
             ) : (
               <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
@@ -307,15 +369,11 @@ export default function Dashboard({ data }: { data: any }) {
                          Taken
                        </span>
                     ) : md.hasRequested ? (
-                      <span className="text-xs font-semibold bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-2 py-1 rounded">
+                      <span className="text-xs font-semibold bg-indigo-100 text-indigo-600 px-2 py-1 rounded">
                         Requested
                       </span>
                     ) : (
-                      <button
-                        onClick={() => handleRequest(md.id)}
-                        disabled={isPending}
-                        className="text-xs bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-500/10 dark:hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 font-bold px-3 py-1.5 rounded-md transition-colors"
-                      >
+                      <button onClick={() => handleRequest(md.id)} disabled={isPending} className="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-600 font-bold px-3 py-1.5 rounded-md transition-colors">
                         Request
                       </button>
                     )}
@@ -328,28 +386,35 @@ export default function Dashboard({ data }: { data: any }) {
           <section className="glass-card p-6 border-t-4 border-t-purple-500">
             <div className="flex items-center gap-2 mb-6">
               <Clock className="w-6 h-6 text-purple-500" />
-              <h2 className="text-xl font-bold">My Requests</h2>
+              <h2 className="text-xl font-bold">My Sent Requests</h2>
             </div>
 
             {data.myRequests.length === 0 ? (
-              <p className="text-gray-500 dark:text-gray-400 text-sm italic text-center py-8">
+              <p className="text-gray-500 text-sm italic text-center py-8">
                 You haven't requested any cards.
               </p>
             ) : (
               <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
                 {data.myRequests.map((req: any) => (
-                  <div key={req.id} className="bg-gray-50 dark:bg-slate-800/50 p-3 rounded-lg flex items-center justify-between border border-transparent hover:border-gray-200 dark:hover:border-gray-700 transition-colors">
+                  <div key={req.id} className="bg-gray-50 dark:bg-slate-800/50 p-3 rounded-lg flex items-center justify-between border border-transparent">
                     <div>
                       <p className="font-bold text-sm">{format(req.dayStatus.date, 'MMM do')}</p>
                       <p className="text-xs font-medium mt-1">From: {req.dayStatus.owner.name}</p>
                     </div>
-                    <span className={`text-[10px] uppercase tracking-wider font-bold px-2 py-1 rounded-full ${
-                      req.status === 'PENDING' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
-                      req.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
-                      'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                    }`}>
-                      {req.status}
-                    </span>
+                    <div className="flex flex-col items-end gap-2">
+                      <span className={`text-[10px] uppercase tracking-wider font-bold px-2 py-1 rounded-full ${
+                        req.status === 'PENDING' ? 'bg-amber-100 text-amber-700' :
+                        req.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-700' :
+                        'bg-red-100 text-red-700'
+                      }`}>
+                        {req.status}
+                      </span>
+                      {req.status === 'APPROVED' && (
+                        <button onClick={() => handleRelease(req.id)} disabled={isPending} className="text-[10px] text-red-500 hover:text-red-700 font-bold underline">
+                          Release
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers'
 import prisma from '@/lib/prisma'
-import { addDays, startOfDay } from 'date-fns'
+import { addDays, startOfDay, getDay } from 'date-fns'
 
 const COOKIE_NAME = 'goodies_session'
 
@@ -24,6 +24,16 @@ export async function getDashboardData() {
   const today = startOfDay(new Date())
   const thirtyDaysFromNow = addDays(today, 29) // 30 days total
 
+  // Generate the days, filtering out Friday (5) and Saturday (6)
+  const workDays: Date[] = []
+  for (let i = 0; i < 30; i++) {
+    const d = addDays(today, i)
+    const dayOfWeek = getDay(d)
+    if (dayOfWeek !== 5 && dayOfWeek !== 6) {
+      workDays.push(d)
+    }
+  }
+
   // 1. My Schedule
   const myDays = await prisma.dayStatus.findMany({
     where: {
@@ -42,47 +52,7 @@ export async function getDashboardData() {
     }
   })
 
-  // Normalize to 30 days
-  const schedule = Array.from({ length: 30 }).map((_, i) => {
-    const d = addDays(today, i)
-    const existing = myDays.find(md => md.date.getTime() === d.getTime())
-    return {
-      date: d,
-      status: existing ? existing.state : 'USING',
-      id: existing?.id,
-      requests: existing?.requests || []
-    }
-  })
-
-  // 2. Marketplace (Available)
-  const marketplaceDays = await prisma.dayStatus.findMany({
-    where: {
-      ownerId: { not: user.id },
-      date: {
-        gte: today,
-        lte: thirtyDaysFromNow
-      },
-      state: 'NOT_USING' // Only NOT_USING
-    },
-    include: {
-      owner: true,
-      requests: {
-        where: {
-          requesterId: user.id
-        }
-      }
-    },
-    orderBy: {
-      date: 'asc'
-    }
-  })
-
-  const marketplace = marketplaceDays.map(md => ({
-    ...md,
-    hasRequested: md.requests.length > 0
-  }))
-
-  // 3. My Requests
+  // 2. My Requests (Borrowed or Pending)
   const myRequests = await prisma.dayRequest.findMany({
     where: {
       requesterId: user.id,
@@ -106,7 +76,59 @@ export async function getDashboardData() {
       }
     }
   })
-  
+
+  // Normalize to the workDays
+  const schedule = workDays.map(d => {
+    const existing = myDays.find(md => md.date.getTime() === d.getTime())
+    
+    // Find if user is borrowing on this day
+    const approvedBorrowings = myRequests.filter(req => 
+      req.status === 'APPROVED' && req.dayStatus.date.getTime() === d.getTime()
+    )
+
+    return {
+      date: d,
+      status: existing ? existing.state : 'USING',
+      id: existing?.id,
+      requests: existing?.requests || [],
+      borrowings: approvedBorrowings
+    }
+  })
+
+  // 3. Marketplace (Available)
+  const marketplaceDays = await prisma.dayStatus.findMany({
+    where: {
+      ownerId: { not: user.id },
+      date: {
+        gte: today,
+        lte: thirtyDaysFromNow
+      },
+      state: 'NOT_USING'
+    },
+    include: {
+      owner: true,
+      requests: {
+        where: {
+          requesterId: user.id
+        }
+      }
+    },
+    orderBy: {
+      date: 'asc'
+    }
+  })
+
+  // Filter out weekends from marketplace just in case
+  const marketplace = marketplaceDays
+    .filter(md => {
+      const dayOfWeek = getDay(md.date)
+      return dayOfWeek !== 5 && dayOfWeek !== 6
+    })
+    .map(md => ({
+      ...md,
+      hasRequested: md.requests.length > 0
+    }))
+
   // 4. Suggestions
   // Dates in the next 14 days where there's an available card, that user hasn't requested.
   const suggestions = marketplace
