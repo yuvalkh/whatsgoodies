@@ -22,7 +22,7 @@ export async function getDashboardData() {
   if (!user) throw new Error('Not authenticated')
 
   const today = startOfDay(new Date())
-  const sevenDaysFromNow = addDays(today, 6)
+  const thirtyDaysFromNow = addDays(today, 29) // 30 days total
 
   // 1. My Schedule
   const myDays = await prisma.dayStatus.findMany({
@@ -30,7 +30,7 @@ export async function getDashboardData() {
       ownerId: user.id,
       date: {
         gte: today,
-        lte: sevenDaysFromNow
+        lte: thirtyDaysFromNow
       }
     },
     include: {
@@ -42,8 +42,8 @@ export async function getDashboardData() {
     }
   })
 
-  // Normalize to 7 days
-  const schedule = Array.from({ length: 7 }).map((_, i) => {
+  // Normalize to 30 days
+  const schedule = Array.from({ length: 30 }).map((_, i) => {
     const d = addDays(today, i)
     const existing = myDays.find(md => md.date.getTime() === d.getTime())
     return {
@@ -60,9 +60,9 @@ export async function getDashboardData() {
       ownerId: { not: user.id },
       date: {
         gte: today,
-        lte: sevenDaysFromNow
+        lte: thirtyDaysFromNow
       },
-      state: 'NOT_USING'
+      state: 'NOT_USING' // Only NOT_USING
     },
     include: {
       owner: true,
@@ -89,7 +89,7 @@ export async function getDashboardData() {
       dayStatus: {
         date: {
           gte: today,
-          lte: sevenDaysFromNow
+          lte: thirtyDaysFromNow
         }
       }
     },
@@ -106,6 +106,12 @@ export async function getDashboardData() {
       }
     }
   })
+  
+  // 4. Suggestions
+  // Dates in the next 14 days where there's an available card, that user hasn't requested.
+  const suggestions = marketplace
+    .filter(md => !md.hasRequested && md.date <= addDays(today, 14))
+    .slice(0, 5) // top 5 suggestions
 
-  return { schedule, marketplace, myRequests, user }
+  return { schedule, marketplace, myRequests, suggestions, user }
 }

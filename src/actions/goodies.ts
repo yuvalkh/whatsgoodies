@@ -115,10 +115,45 @@ export async function approveRequest(requestId: string, dayStatusId: string) {
       },
       data: { status: 'DECLINED' }
     }),
-    // Update the day status to ASSIGNED
     prisma.dayStatus.update({
       where: { id: dayStatusId },
       data: { state: 'ASSIGNED' }
     })
   ])
+}
+
+export async function cancelAssignment(dayStatusId: string) {
+  const user = await getCurrentUser()
+  if (!user) throw new Error('Not authenticated')
+
+  const dayStatus = await prisma.dayStatus.findUnique({
+    where: { id: dayStatusId }
+  })
+
+  if (!dayStatus || dayStatus.ownerId !== user.id) {
+    throw new Error('Unauthorized')
+  }
+
+  await prisma.$transaction([
+    prisma.dayRequest.updateMany({
+      where: { dayStatusId, status: 'APPROVED' },
+      data: { status: 'PENDING' } // Revert to pending so they could be approved again, or maybe DECLINED. We'll set it to PENDING.
+    }),
+    prisma.dayStatus.update({
+      where: { id: dayStatusId },
+      data: { state: 'NOT_USING' }
+    })
+  ])
+}
+
+export async function updateProfile(name: string) {
+  const user = await getCurrentUser()
+  if (!user) throw new Error('Not authenticated')
+
+  if (!name.trim()) throw new Error('Name cannot be empty')
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { name: name.trim() }
+  })
 }
