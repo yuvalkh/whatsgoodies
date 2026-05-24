@@ -1,0 +1,59 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  goodiesNumber String    @unique // 7-digit number
+  createdAt     DateTime  @default(now())
+  
+  // A user can own multiple days explicitly marked as NOT_USING or ASSIGNED
+  days          DayStatus[]  @relation("OwnerDays")
+  
+  // A user can make multiple requests
+  requests      DayRequest[] @relation("Requester")
+}
+
+model DayStatus {
+  id          String       @id @default(cuid())
+  date        DateTime     // Store the specific day (at midnight UTC or local equivalent)
+  ownerId     String
+  owner       User         @relation("OwnerDays", fields: [ownerId], references: [id])
+  
+  // If a DayStatus exists, it means the user explicitly marked it as NOT_USING
+  // or it has been ASSIGNED to someone. 
+  // If a record doesn't exist for a user+date, it implicitly means "USING".
+  state       State        @default(NOT_USING)
+  
+  requests    DayRequest[]
+
+  @@unique([ownerId, date])
+}
+
+enum State {
+  NOT_USING
+  ASSIGNED
+}
+
+model DayRequest {
+  id          String        @id @default(cuid())
+  dayStatusId String
+  dayStatus   DayStatus     @relation(fields: [dayStatusId], references: [id], onDelete: Cascade)
+  requesterId String
+  requester   User          @relation("Requester", fields: [requesterId], references: [id], onDelete: Cascade)
+  status      RequestStatus @default(PENDING)
+  createdAt   DateTime      @default(now())
+
+  @@unique([dayStatusId, requesterId])
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  DECLINED
+}
